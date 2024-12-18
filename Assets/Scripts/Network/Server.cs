@@ -20,14 +20,18 @@ namespace Network
         public Action<string> OnCreateRoom;
         public Action<string> OnJoinRoom;
         public Action<string> OnDeleteRoom;
-        private TcpListener tcpListener;
-        private List<TcpClient> connectedClients = new();
-        private Dictionary<string, Room> rooms = new Dictionary<string, Room>();
-        private CancellationTokenSource cancellationTokenSource;
-        private UniTask acceptClientsTask;
-        private Dictionary<string, HashSet<TcpClient>> roomParticipants = new();
+        private TcpListener _tcpListener;
+        private List<TcpClient> _connectedClients = new();
+        private CancellationTokenSource _cancellationTokenSource;
+        private UniTask _acceptClientsTask;
+        private Dictionary<string, HashSet<TcpClient>> _roomParticipants = new();
 
         public Server()
+        {
+            Subscribe();
+        }
+
+        private void Subscribe()
         {
             OnMessageReceived += ProcessClientMessage;
             EventBus.instance.OnSendChatMessage += OnSendChatMessage;
@@ -37,12 +41,12 @@ namespace Network
         {
             Debug.Log("Starting server...");
 
-            tcpListener = new TcpListener(IPAddress.Any, serverPort);
-            tcpListener.Start();
-            cancellationTokenSource = new CancellationTokenSource();
+            _tcpListener = new TcpListener(IPAddress.Any, serverPort);
+            _tcpListener.Start();
+            _cancellationTokenSource = new CancellationTokenSource();
             
-            acceptClientsTask = AcceptClientsLoop(cancellationTokenSource.Token);
-            await acceptClientsTask.SuppressCancellationThrow();
+            _acceptClientsTask = AcceptClientsLoop(_cancellationTokenSource.Token);
+            await _acceptClientsTask.SuppressCancellationThrow();
         }
 
         private async UniTask AcceptClientsLoop(CancellationToken cancellationToken)
@@ -51,8 +55,8 @@ namespace Network
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    TcpClient client = await tcpListener.AcceptTcpClientAsync();
-                    connectedClients.Add(client);
+                    TcpClient client = await _tcpListener.AcceptTcpClientAsync();
+                    _connectedClients.Add(client);
                     IPEndPoint clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
 
                     OnClientConnected?.Invoke(clientEndPoint);
@@ -116,7 +120,7 @@ namespace Network
 
         private List<string> GetClientList()
         {
-            var clientEndPoints = connectedClients
+            var clientEndPoints = _connectedClients
                 .Where(c => c.Connected)
                 .Select(c => (c.Client.RemoteEndPoint as IPEndPoint)?.ToString())
                 .Where(ep => ep != null)
@@ -142,7 +146,7 @@ namespace Network
             if (message.StartsWith(MessageEnum.CREATE_ROOM.ToString()))
             {
                 OnCreateRoom?.Invoke(pureMessage);
-                var client = connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
+                var client = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
                 if (client != null)
                 {
                     AddClientToRoom(pureMessage, client);
@@ -152,7 +156,7 @@ namespace Network
             else if (message.StartsWith(MessageEnum.JOIN_ROOM.ToString()))
             {
                 OnJoinRoom?.Invoke(pureMessage);
-                var client = connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
+                var client = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
                 if (client != null)
                 {
                     AddClientToRoom(pureMessage, client);
@@ -177,17 +181,13 @@ namespace Network
                 var msg = sparts[2];
                 EventBus.instance.OnReceiveRoomMessage?.Invoke(roomID, nickname, msg);
             }
-            else
-            {
-                
-            }
         }
         
         private void OnSendChatMessage(string roomName, string nickName, string message)
         {
             var msg = $"{MessageEnum.SEND_TO_ROOM.ToString()}:{roomName}:{nickName}:{message}";
             byte[] data = Encoding.UTF8.GetBytes(msg);
-            foreach (var client in connectedClients)
+            foreach (var client in _connectedClients)
             {
                 if (client.Connected)
                 {
@@ -199,7 +199,7 @@ namespace Network
         public void SendMessageToAllClients(string message)
         {
             byte[] data = Encoding.UTF8.GetBytes(message);
-            foreach (var client in connectedClients)
+            foreach (var client in _connectedClients)
             {
                 if (client.Connected)
                 {
@@ -240,42 +240,34 @@ namespace Network
         
         public void AddClientToRoom(string roomId, TcpClient client)
         {
-            if (!roomParticipants.ContainsKey(roomId))
+            if (!_roomParticipants.ContainsKey(roomId))
             {
-                roomParticipants[roomId] = new HashSet<TcpClient>();
+                _roomParticipants[roomId] = new HashSet<TcpClient>();
             }
 
-            roomParticipants[roomId].Add(client);
+            _roomParticipants[roomId].Add(client);
             Debug.Log($"Client {client.Client.RemoteEndPoint} added to room {roomId}");
         }
 
         public void RemoveClientFromRoom(string roomId, TcpClient client)
         {
-            if (roomParticipants.ContainsKey(roomId))
+            if (_roomParticipants.ContainsKey(roomId))
             {
-                roomParticipants[roomId].Remove(client);
+                _roomParticipants[roomId].Remove(client);
                 Debug.Log($"Client {client.Client.RemoteEndPoint} removed from room {roomId}");
 
-                if (roomParticipants[roomId].Count == 0)
+                if (_roomParticipants[roomId].Count == 0)
                 {
-                    roomParticipants.Remove(roomId); // Удаляем комнату, если она пуста
+                    _roomParticipants.Remove(roomId);
                     Debug.Log($"Room {roomId} is empty and removed");
                 }
-            }
-        }
-
-        public void RemoveClientFromAllRooms(IPEndPoint client)
-        {
-            foreach (var room in roomParticipants.Keys.ToList())
-            {
-                //RemoveClientFromRoom(room, client);
             }
         }
         
         public void SendMessageToRoom(string roomId, string message)
         {
             Debug.Log("Chat test: " + roomId + " | " + message);
-            if (!roomParticipants.ContainsKey(roomId))
+            if (!_roomParticipants.ContainsKey(roomId))
             {
                 Debug.LogWarning($"Room {roomId} does not exist");
                 return;
@@ -283,7 +275,7 @@ namespace Network
 
             byte[] data = Encoding.UTF8.GetBytes(message);
 
-            foreach (var client in roomParticipants[roomId])
+            foreach (var client in _roomParticipants[roomId])
             {
                 if (client.Connected)
                 {
@@ -299,7 +291,7 @@ namespace Network
             if (client != null)
             {
                 IPEndPoint clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
-                connectedClients.Remove(client);
+                _connectedClients.Remove(client);
                 client.Close();
 
                 OnClientDisconnected?.Invoke(clientEndPoint);
@@ -311,28 +303,34 @@ namespace Network
         {
             SendMessageToAllClients(MessageEnum.SERVER_SHUTDOWN.ToString());
         }
+        
+        private void Unsubscribe()
+        {
+            OnMessageReceived -= ProcessClientMessage;
+            EventBus.instance.OnSendChatMessage -= OnSendChatMessage;
+        }
 
         public void StopServer()
         {
             Debug.Log("Stopping server...");
 
             NotificateOthers();
-            OnMessageReceived -= ProcessClientMessage;
+            Unsubscribe();
             
-            cancellationTokenSource?.Cancel();
+            _cancellationTokenSource?.Cancel();
 
-            if (acceptClientsTask.Status == UniTaskStatus.Pending)
+            if (_acceptClientsTask.Status == UniTaskStatus.Pending)
             {
                 Debug.Log("Waiting for AcceptClientsLoop to finish...");
             }
             
-            foreach (var client in connectedClients)
+            foreach (var client in _connectedClients)
             {
                 client.Close();
             }
 
-            connectedClients.Clear();
-            tcpListener?.Stop();
+            _connectedClients.Clear();
+            _tcpListener?.Stop();
         }
     }
 }

@@ -22,8 +22,7 @@ namespace Network
         private CancellationToken _findServerCancellationToken;
         private CancellationToken _becomeNewServer;
         private CancellationToken _reconnectToServer;
-        private string _localIPAddress;
-        private List<IPEndPoint> connectedClients;
+        private List<IPEndPoint> _connectedClients;
 
         public Client()
         {
@@ -36,8 +35,7 @@ namespace Network
             _findServerCancellationToken = new CancellationToken();
             _becomeNewServer = new CancellationToken();
             _reconnectToServer = new CancellationToken();
-            connectedClients = new List<IPEndPoint>();
-            _localIPAddress = GetIpUtil.GetLocalIPAddress();
+            _connectedClients = new List<IPEndPoint>();
         }
 
         public void Subscribe()
@@ -51,7 +49,6 @@ namespace Network
 
         private void OnSendChatMessage(string roomName, string nickName, string message)
         {
-            Debug.Log("nickName " + message);
             var msg = $"{MessageEnum.SEND_TO_ROOM.ToString()}:{roomName}:{nickName}:{message}";
             connector.SendMessage(msg);
         }
@@ -70,7 +67,7 @@ namespace Network
             {
                 message = message.TrimStart('*');
                 List<string> clients = new List<string>(message.Split(','));
-                connectedClients = ConvertToIPEndPoint(clients);
+                _connectedClients = ConvertToIPEndPoint(clients);
             }
             else if (message == MessageEnum.SERVER_SHUTDOWN.ToString())
             {
@@ -104,9 +101,9 @@ namespace Network
 
         private async UniTask ChooseNewServer()
         {
-            if (connectedClients.Count > 0)
+            if (_connectedClients.Count > 0)
             {
-                var newServer = connectedClients[0];
+                var newServer = _connectedClients[0];
                 if (connector.WillBeNewServer(newServer))
                 {
                     Debug.Log("Will be new Server");
