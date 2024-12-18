@@ -5,10 +5,11 @@ using UnityEngine;
 
 namespace Network
 {
-    public class ConnectionHandler : MonoBehaviour
+    public class Switcher : MonoBehaviour
     {
-        public Server server;
-        public Client client;
+        private Server server;
+        private Client client;
+        private Subscriber _subscriber;
         private bool isMasterClient;
         [SerializeField] private RoomCreationUI roomCreationUI; 
         private CancellationTokenSource _initCancellationTokenSrc;
@@ -17,9 +18,10 @@ namespace Network
         {
             _initCancellationTokenSrc = new CancellationTokenSource();
             client = new Client();
+            _subscriber = new Subscriber();
             client.OnBecomeServer += OnBecomeServer;
             client.Subscribe();
-            RoomActionSubscribe();
+            _subscriber.RoomActionSubscribe(roomCreationUI, client, server, OnRoomCreationRequest, OnRoomRemove, OnJoinToRoom);
             
             var serverFound = await client.TryFindServer();
 
@@ -33,7 +35,7 @@ namespace Network
             }
             else
             {
-                RoomActionUnsubscribe();
+                _subscriber.RoomActionUnsubscribe(client, server, OnRoomCreationRequest, OnRoomRemove, OnJoinToRoom);
                 Debug.Log("No server found. Starting as server.");
                 isMasterClient = true;
                 client.OnBecomeServer -= OnBecomeServer;
@@ -43,56 +45,8 @@ namespace Network
                 server = new Server();
                 server.OnClientConnected += OnClientConnected;
                 server.OnClientDisconnected += OnClientDisconnected;
-                RoomActionSubscribe();
+                _subscriber.RoomActionSubscribe(roomCreationUI, client, server, OnRoomCreationRequest, OnRoomRemove, OnJoinToRoom);
                 await server.StartServer();
-            }
-        }
-
-        void RoomActionSubscribe()
-        {
-            if (roomCreationUI != null)
-            {
-                roomCreationUI.OnCreateRoomRequested += OnRoomCreationRequest;
-                roomCreationUI.OnDeleteRoom += OnRoomRemove;
-                roomCreationUI.OnJoinToRoom += OnJoinToRoom;
-            }
-
-            if (client != null)
-            {
-                client.OnCreateRoom += OnCreateRoom;
-                client.OnJoinRoom += OnJoinRoom;
-                client.OnDeleteRoom += OnDeleteRoom;
-            }
-            
-            if (server != null)
-            {
-                server.OnCreateRoom += OnCreateRoom;
-                server.OnJoinRoom += OnJoinRoom;
-                server.OnDeleteRoom += OnDeleteRoom;
-            }
-        }
-        
-        void RoomActionUnsubscribe()
-        {
-            if (roomCreationUI != null)
-            {
-                roomCreationUI.OnCreateRoomRequested -= OnRoomCreationRequest;
-                roomCreationUI.OnDeleteRoom -= OnRoomRemove;
-                roomCreationUI.OnJoinToRoom -= OnJoinToRoom;
-            }
-            
-            if (client != null)
-            {
-                client.OnCreateRoom -= OnCreateRoom;
-                client.OnJoinRoom -= OnJoinRoom;
-                client.OnDeleteRoom -= OnDeleteRoom;
-            }
-            
-            if (server != null)
-            {
-                server.OnCreateRoom -= OnCreateRoom;
-                server.OnJoinRoom -= OnJoinRoom;
-                server.OnDeleteRoom -= OnDeleteRoom;
             }
         }
 
@@ -131,34 +85,10 @@ namespace Network
 
         private void OnDestroy()
         {
-            RoomActionUnsubscribe();
+            _subscriber.RoomActionUnsubscribe(client, server, OnRoomCreationRequest, OnRoomRemove, OnJoinToRoom);
             server?.StopServer();
             client?.Unsubscribe();
             client?.connector?.Dispose();
-        }
-
-        void OnCreateRoom(string roomId)
-        {
-            if (roomCreationUI != null)
-            {
-                roomCreationUI.CreateRoomFromServer(roomId);   
-            }
-        }
-
-        void OnJoinRoom(string roomId)
-        {
-            if (roomCreationUI != null)
-            {
-                roomCreationUI.JoinToRoomFromServer(roomId);  
-            }
-        }
-        
-        void OnDeleteRoom(string roomId)
-        {
-            if (roomCreationUI != null)
-            {
-                roomCreationUI.DeleteRoomFromServer(roomId);  
-            }
         }
 
         async void OnBecomeServer()
