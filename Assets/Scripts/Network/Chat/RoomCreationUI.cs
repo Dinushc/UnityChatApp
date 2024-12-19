@@ -21,7 +21,7 @@ namespace Network.Chat
         [SerializeField] private ChatView _chatView;
         private List<string> roomNames;
         private List<string> myRooms;
-        private RoomChatManager _roomChatManager;
+        private Dictionary<string, RoomChatManager> _chatManagers = new();
 
         private void Start()
         {
@@ -47,7 +47,8 @@ namespace Network.Chat
                 return;
             }
             
-            _roomChatManager = new RoomChatManager(generatedRoomName);
+            var roomChatManager = new RoomChatManager(generatedRoomName);
+            _chatManagers.Add(generatedRoomName, roomChatManager);
             roomNames.Add(generatedRoomName);
             OnCreateRoomRequested?.Invoke(generatedRoomName);
             
@@ -77,8 +78,12 @@ namespace Network.Chat
         
         public void JoinToRoomFromServer(string roomId)
         {
-            _roomChatManager = new RoomChatManager(roomId);
-            _chatView.OpenChat(_roomChatManager);
+            if (!_chatManagers.ContainsKey(roomId))
+            {
+                var roomChatManager = new RoomChatManager(roomId);   
+                _chatManagers.Add(roomId, roomChatManager);
+            }
+            _chatView.OpenChat(_chatManagers[roomId]);
         }
         
         public void DeleteRoomFromServer(string roomId)
@@ -105,17 +110,19 @@ namespace Network.Chat
         {
             if (view != null)
             {
+                _chatManagers.Remove(view.roomLabel.text);
                 Destroy(view.gameObject);
             }
         }
 
         private void JoinRoom(string roomId)
         {
-            if (_roomChatManager == null)
+            if (!_chatManagers.ContainsKey(roomId))
             {
-                _roomChatManager = new RoomChatManager(roomId);
+                var roomChatManager = new RoomChatManager(roomId);   
+                _chatManagers.Add(roomId, roomChatManager);
             }
-            _chatView.OpenChat(_roomChatManager);
+            _chatView.OpenChat(_chatManagers[roomId]);
             OnJoinToRoom?.Invoke(roomId);
         }
     }

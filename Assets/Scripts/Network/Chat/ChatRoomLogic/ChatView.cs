@@ -27,7 +27,6 @@ namespace Network.Chat.ChatRoomLogic
         private void CloseChat()
         {
             EventBus.instance.OnCloseChat?.Invoke(currentRoomChat.RoomName);
-            currentRoomChat = null;
             chatUI.SetActive(false);
         }
 
