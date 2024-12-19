@@ -49,8 +49,8 @@ namespace Network
 
         private void OnSendChatMessage(string roomName, string nickName, string message)
         {
-            var msg = $"{MessageEnum.SEND_TO_ROOM.ToString()}:{roomName}:{nickName}:{message}";
-            connector.SendMessage(msg);
+            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, message, roomName, nickName);
+            connector.SendMessage(serverMessage);
         }
 
         public void Unsubscribe()
@@ -60,42 +60,41 @@ namespace Network
             connector.OnDisconnected -= OnDisconnected;
         }
 
-        private async void HandleServerMessage(string message)
+        private async void HandleServerMessage(ServerMessage message)
         {
-            var pureMessage = TextUtility.GetPureMessage(message);
-            if (message.StartsWith("*"))
+            switch (message.MessageType)
             {
-                message = message.TrimStart('*');
-                List<string> clients = new List<string>(message.Split(','));
-                _connectedClients = ConvertToIPEndPoint(clients);
-            }
-            else if (message == MessageEnum.SERVER_SHUTDOWN.ToString())
-            {
-                await ChooseNewServer();
-            }
-            else if(message.StartsWith(MessageEnum.CREATE_ROOM.ToString()))
-            {
-                OnCreateRoom?.Invoke(pureMessage);
-            }
-            else if(message.StartsWith(MessageEnum.JOIN_ROOM.ToString()))
-            {
-                OnJoinRoom?.Invoke(pureMessage);
-            }
-            else if(message.StartsWith(MessageEnum.DELETE_ROOM.ToString()))
-            {
-                OnDeleteRoom?.Invoke(pureMessage);
-            }
-            else if (message.StartsWith(MessageEnum.SEND_TO_ROOM.ToString()))
-            {
-                var parts = pureMessage.Split(':');
-                var roomId = parts[0];
-                var nickname = parts[1];
-                var msg = parts[2];
-                EventBus.instance.OnReceiveRoomMessage?.Invoke(roomId, nickname, msg);
-            }
-            else
-            {
-                Debug.Log($"Message from server: {message}");
+                case MessageEnum.CREATE_ROOM:
+                    OnCreateRoom?.Invoke(message.MessageData);
+                    break;
+
+                case MessageEnum.JOIN_ROOM:
+                    OnJoinRoom?.Invoke(message.MessageData);
+                    break;
+
+                case MessageEnum.DELETE_ROOM:
+                    OnDeleteRoom?.Invoke(message.MessageData);
+                    break;
+
+                case MessageEnum.SEND_TO_ROOM:
+                    if (message.RoomId != null && message.Nickname != null)
+                    {
+                        EventBus.instance.OnReceiveRoomMessage?.Invoke(message.RoomId, message.Nickname, message.MessageData);
+                    }
+                    break;
+
+                case MessageEnum.SERVER_SHUTDOWN:
+                    await ChooseNewServer();
+                    break;
+
+                case MessageEnum.CLIENT_LIST:
+                    List<string> clients = new List<string>(message.MessageData.Split(','));
+                    _connectedClients = ConvertToIPEndPoint(clients);
+                    break;
+
+                default:
+                    Debug.Log($"Unhandled message from server: {message}");
+                    break;
             }
         }
 
@@ -122,15 +121,18 @@ namespace Network
         
         private List<IPEndPoint> ConvertToIPEndPoint(List<string> clientEndPoints)
         {
-            var endPoints = clientEndPoints
-                .Select(s =>
-                {
-                    var parts = s.Split(':');
-                    var ip = IPAddress.Parse(parts[0]);
-                    var port = int.Parse(parts[1]);
-                    return new IPEndPoint(ip, port);
-                })
-                .ToList();
+            List<IPEndPoint> endPoints = new List<IPEndPoint>();
+            foreach (var client in clientEndPoints)
+            {
+                string[] parts = client.Split(':');
+                string ipString = parts[0];
+                ipString = ipString.Trim();
+                int port = int.Parse(parts[1]);
+                
+                IPAddress ipAddress = IPAddress.Parse(ipString);
+                IPEndPoint endPoint = new IPEndPoint(ipAddress, port);
+                endPoints.Add(endPoint);
+            }
             return endPoints;
         }
         
@@ -213,33 +215,22 @@ namespace Network
             Debug.Log("Connected to server!");
         }
 
-        public void CreateRoom(string roomId)
+        public void HandleRoomCommand(string roomId, MessageEnum messageType)
         {
-            var message = $"{MessageEnum.CREATE_ROOM.ToString()}:{roomId}";
-            connector.SendMessage(message);
-        }
-
-        public void JoinRoom(string roomId)
-        {
-            var message = $"{MessageEnum.JOIN_ROOM.ToString()}:{roomId}";
-            connector.SendMessage(message);
-        }
-
-        public void DeleteRoom(string roomId)
-        {
-            var message = $"{MessageEnum.DELETE_ROOM.ToString()}:{roomId}";
-            connector.SendMessage(message);
+            var serverMessage = new ServerMessage(messageType, roomId);
+            connector.SendMessage(serverMessage);
         }
         
         public void SendChatMessage(string roomId, string message)
         {
-            var msg = $"{MessageEnum.SEND_TO_ROOM.ToString()}:{roomId}:{message}";
-            connector.SendMessage(msg);
+            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, roomId, message);
+            connector.SendMessage(serverMessage);
         }
 
         public void OnDisconnected()
         {
-            connector.SendMessage($"{MessageEnum.DISCONNECT.ToString()}");
+            var serverMessage = new ServerMessage(MessageEnum.DISCONNECT, string.Empty);
+            connector.SendMessage(serverMessage);
         }
     }
 }

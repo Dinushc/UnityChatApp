@@ -7,6 +7,7 @@ namespace DefaultNamespace
         CREATE_ROOM,
         JOIN_ROOM,
         SEND_TO_ROOM,
-        DELETE_ROOM
+        DELETE_ROOM,
+        CLIENT_LIST
     }
 }

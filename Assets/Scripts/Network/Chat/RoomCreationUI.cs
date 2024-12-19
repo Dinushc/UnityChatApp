@@ -111,7 +111,10 @@ namespace Network.Chat
 
         private void JoinRoom(string roomId)
         {
-            Debug.Log($"Joining room: {roomId}");
+            if (_roomChatManager == null)
+            {
+                _roomChatManager = new RoomChatManager(roomId);
+            }
             _chatView.OpenChat(_roomChatManager);
             OnJoinToRoom?.Invoke(roomId);
         }

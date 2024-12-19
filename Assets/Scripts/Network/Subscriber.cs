@@ -1,5 +1,6 @@
 using System;
 using Network.Chat;
+using UnityEngine;
 
 namespace Network
 {

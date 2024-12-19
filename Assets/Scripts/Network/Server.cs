@@ -76,6 +76,7 @@ namespace Network
             {
                 NetworkStream stream = client.GetStream();
                 byte[] buffer = new byte[1024];
+                StringBuilder messageBuilder = new StringBuilder();
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -88,10 +89,20 @@ namespace Network
                     int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                     if (bytesRead > 0)
                     {
-                        string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                        IPEndPoint clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
-
-                        OnMessageReceived?.Invoke(message, clientEndPoint);
+                        string part = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        messageBuilder.Append(part);
+                        
+                        try
+                        {
+                            var completeMessage = messageBuilder.ToString();
+                            IPEndPoint clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
+                            OnMessageReceived?.Invoke(completeMessage, clientEndPoint);
+                            messageBuilder.Clear();
+                        }
+                        catch (Exception jsonEx)
+                        {
+                            Debug.Log($"Partial or invalid JSON received: {messageBuilder}. Error: {jsonEx.Message}");
+                        }
                     }
                     else
                     {
@@ -99,6 +110,10 @@ namespace Network
                         break;
                     }
                 }
+            }
+            catch (SocketException ex)
+            {
+                Debug.LogError($"Error handling client: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -112,10 +127,11 @@ namespace Network
         
         public void BroadcastClientList()
         {
-            List<string> clientEndPoints = GetClientList();
+            var clientEndPoints = GetClientList();
+            var clientList = string.Join(", ", clientEndPoints);
+            var serverMessage = new ServerMessage(MessageEnum.CLIENT_LIST, clientList);
 
-            string clientListMessage = "*" + string.Join(",", clientEndPoints);
-            SendMessageToAllClients(clientListMessage);
+            SendMessageToAllClients(serverMessage);
         }
 
         private List<string> GetClientList()
@@ -142,51 +158,70 @@ namespace Network
 
         public void ProcessClientMessage(string message, IPEndPoint clientEndPoint)
         {
-            var pureMessage = TextUtility.GetPureMessage(message);
-            if (message.StartsWith(MessageEnum.CREATE_ROOM.ToString()))
+            var clientMessage = JsonUtility.FromJson<ServerMessage>(message);
+
+            switch (clientMessage.MessageType)
             {
-                OnCreateRoom?.Invoke(pureMessage);
-                var client = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
-                if (client != null)
-                {
-                    AddClientToRoom(pureMessage, client);
-                    SendMessageToAllClients(message);
-                }
-            }
-            else if (message.StartsWith(MessageEnum.JOIN_ROOM.ToString()))
-            {
-                OnJoinRoom?.Invoke(pureMessage);
-                var client = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
-                if (client != null)
-                {
-                    AddClientToRoom(pureMessage, client);
-                }
-            }
-            else if (message.StartsWith(MessageEnum.DELETE_ROOM.ToString()))
-            {
-                OnDeleteRoom?.Invoke(pureMessage);
-            }
-            else if (message.StartsWith(MessageEnum.SEND_TO_ROOM.ToString()))
-            {
-                var parts = pureMessage.Split(':', 2);
-                if (parts.Length == 2)
-                {
-                    var roomId = parts[0];
-                    var roomMessage = parts[1];
-                    SendMessageToRoom(roomId, roomMessage);
-                }
-                var sparts = pureMessage.Split(':');
-                var roomID = sparts[0];
-                var nickname = sparts[1];
-                var msg = sparts[2];
-                EventBus.instance.OnReceiveRoomMessage?.Invoke(roomID, nickname, msg);
+                case MessageEnum.CREATE_ROOM:
+                    OnCreateRoom?.Invoke(clientMessage.MessageData);
+                    var createClient = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
+                    if (createClient != null)
+                    {
+                        AddClientToRoom(clientMessage.MessageData, createClient);
+                        SendMessageToAllClients(clientMessage);
+                    }
+                    break;
+
+                case MessageEnum.JOIN_ROOM:
+                    OnJoinRoom?.Invoke(clientMessage.MessageData);
+                    var joinClient = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
+                    if (joinClient != null)
+                    {
+                        AddClientToRoom(clientMessage.MessageData, joinClient);
+                    }
+                    break;
+
+                case MessageEnum.DELETE_ROOM:
+                    OnDeleteRoom?.Invoke(clientMessage.MessageData);
+                    break;
+
+                case MessageEnum.SEND_TO_ROOM:
+                    if (!string.IsNullOrEmpty(clientMessage.RoomId) && !string.IsNullOrEmpty(clientMessage.MessageData))
+                    {
+                        Debug.Log("check blin: " + clientMessage.RoomId + " ||| " + clientMessage.MessageData);
+                        SendMessageToRoom(clientMessage.RoomId, clientMessage.MessageData);
+                    }
+                    
+                    if (!string.IsNullOrEmpty(clientMessage.RoomId) && 
+                        !string.IsNullOrEmpty(clientMessage.Nickname) &&
+                        !string.IsNullOrEmpty(clientMessage.MessageData))
+                    {
+                        EventBus.instance.OnReceiveRoomMessage?.Invoke(
+                            clientMessage.RoomId, 
+                            clientMessage.Nickname, 
+                            clientMessage.MessageData
+                        );
+                    }
+                    break;
+                
+                case MessageEnum.DISCONNECT:
+                    OnClientDisconnected?.Invoke(clientEndPoint);
+                    break;
+
+                default:
+                    Debug.Log($"Unhandled message type from client: {clientMessage.MessageType}");
+                    break;
             }
         }
         
         private void OnSendChatMessage(string roomName, string nickName, string message)
         {
-            var msg = $"{MessageEnum.SEND_TO_ROOM.ToString()}:{roomName}:{nickName}:{message}";
-            byte[] data = Encoding.UTF8.GetBytes(msg);
+            Debug.Log("RoomName: " + roomName);
+            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, message, roomName, nickName);
+
+            string jsonMessage = JsonUtility.ToJson(serverMessage);
+            byte[] data = Encoding.UTF8.GetBytes(jsonMessage);
+
             foreach (var client in _connectedClients)
             {
                 if (client.Connected)
@@ -196,9 +231,11 @@ namespace Network
             }
         }
         
-        public void SendMessageToAllClients(string message)
+        public void SendMessageToAllClients(ServerMessage message)
         {
-            byte[] data = Encoding.UTF8.GetBytes(message);
+            string jsonMessage = JsonUtility.ToJson(message);
+            byte[] data = Encoding.UTF8.GetBytes(jsonMessage);
+
             foreach (var client in _connectedClients)
             {
                 if (client.Connected)
@@ -207,7 +244,7 @@ namespace Network
                 }
             }
         }
-
+        
         public void SendMessageToClient(TcpClient client, string message)
         {
             if (client.Connected)
@@ -217,25 +254,10 @@ namespace Network
             }
         }
         
-        public void CreateRoom(string roomId)
+        public void HandleRoomCommand(string roomId, MessageEnum messageType)
         {
-            var message = $"{MessageEnum.CREATE_ROOM.ToString()}:{roomId}";
+            var message = new ServerMessage(messageType, roomId);
             SendMessageToAllClients(message);
-            Debug.Log($"Room created with ID: {roomId}");
-        }
-
-        public void RemoveRoom(string roomName)
-        {
-            var message = $"{MessageEnum.DELETE_ROOM.ToString()}:{roomName}";
-            SendMessageToAllClients(message);
-            Debug.Log($"Room deleted with ID: {roomName}");
-        }
-        
-        public void JoinRoom(string roomName)
-        {
-            var message = $"{MessageEnum.JOIN_ROOM.ToString()}:{roomName}";
-            SendMessageToAllClients(message);
-            Debug.Log($"Join to room with ID: {roomName}");
         }
         
         public void AddClientToRoom(string roomId, TcpClient client)
@@ -248,25 +270,9 @@ namespace Network
             _roomParticipants[roomId].Add(client);
             Debug.Log($"Client {client.Client.RemoteEndPoint} added to room {roomId}");
         }
-
-        public void RemoveClientFromRoom(string roomId, TcpClient client)
-        {
-            if (_roomParticipants.ContainsKey(roomId))
-            {
-                _roomParticipants[roomId].Remove(client);
-                Debug.Log($"Client {client.Client.RemoteEndPoint} removed from room {roomId}");
-
-                if (_roomParticipants[roomId].Count == 0)
-                {
-                    _roomParticipants.Remove(roomId);
-                    Debug.Log($"Room {roomId} is empty and removed");
-                }
-            }
-        }
         
         public void SendMessageToRoom(string roomId, string message)
         {
-            Debug.Log("Chat test: " + roomId + " | " + message);
             if (!_roomParticipants.ContainsKey(roomId))
             {
                 Debug.LogWarning($"Room {roomId} does not exist");
@@ -277,6 +283,7 @@ namespace Network
 
             foreach (var client in _roomParticipants[roomId])
             {
+                Debug.Log("check client");
                 if (client.Connected)
                 {
                     client.GetStream().Write(data, 0, data.Length);
@@ -284,7 +291,6 @@ namespace Network
             }
             Debug.Log($"Message sent to room {roomId}: {message}");
         }
-
 
         private void DisconnectClient(TcpClient client)
         {
@@ -301,7 +307,8 @@ namespace Network
 
         void NotificateOthers()
         {
-            SendMessageToAllClients(MessageEnum.SERVER_SHUTDOWN.ToString());
+            var serverMessage = new ServerMessage(MessageEnum.SERVER_SHUTDOWN, string.Empty);
+            SendMessageToAllClients(serverMessage);
         }
         
         private void Unsubscribe()

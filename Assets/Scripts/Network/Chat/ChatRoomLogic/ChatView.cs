@@ -19,7 +19,7 @@ namespace Network.Chat.ChatRoomLogic
         public void OpenChat(RoomChatManager chatManager)
         {
             _nickName = _nickName.Equals(string.Empty) ? TextUtility.GetRandomNickname() : _nickName; // no time to save TODO
-            currentRoomChat = chatManager ?? new RoomChatManager("DefaultRoom");
+            currentRoomChat = chatManager;
             chatUI.SetActive(true);
             UpdateChatHistory();
         }

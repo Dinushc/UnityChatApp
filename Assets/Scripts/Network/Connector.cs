@@ -16,9 +16,9 @@ namespace Network
 
         public Action OnConnected;
         public Action OnDisconnected;
-        public Action<string> OnMessageReceived;
+        public Action<ServerMessage> OnMessageReceived;
 
-        public Connector(bool isServer, int serverPort = 3333, int clientPort = 0)
+        public Connector(bool isServer, int serverPort = 10000, int clientPort = 0)
         {
             tcpClient = new TcpClient();
             connectCancellationTokenSource = new CancellationTokenSource();
@@ -53,15 +53,42 @@ namespace Network
             {
                 NetworkStream stream = tcpClient.GetStream();
                 byte[] buffer = new byte[1024];
+                StringBuilder messageBuffer = new StringBuilder();
 
                 while (!listeningCancellationTokenSource.Token.IsCancellationRequested)
                 {
                     int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, listeningCancellationTokenSource.Token);
-                    listeningCancellationTokenSource.Token.ThrowIfCancellationRequested();
+
                     if (bytesRead > 0)
                     {
-                        string message = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                        OnMessageReceived?.Invoke(message);
+                        string part = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                        messageBuffer.Append(part);
+
+                        if (part.TrimEnd().EndsWith("}"))
+                        {
+                            string completeMessage = messageBuffer.ToString();
+                            int jsonStartIndex = completeMessage.IndexOf('{');
+                
+                            if (jsonStartIndex != -1)
+                            {
+                                completeMessage = completeMessage.Substring(jsonStartIndex);
+                                
+                                if (completeMessage.TrimEnd().EndsWith("}"))
+                                {
+                                    try
+                                    {
+                                        Debug.Log("Received message: " + completeMessage);
+                                        var serverMessage = JsonUtility.FromJson<ServerMessage>(completeMessage);
+                                        OnMessageReceived?.Invoke(serverMessage);
+                                    }
+                                    catch (Exception jsonEx)
+                                    {
+                                        Debug.LogError($"JSON parse error: {jsonEx.Message}. Raw message: {completeMessage}");
+                                    }
+                                    messageBuffer.Clear();
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -72,11 +99,12 @@ namespace Network
             }
         }
 
-        public void SendMessage(string message)
+        public void SendMessage(ServerMessage message)
         {
             if (tcpClient.Connected)
             {
-                byte[] data = Encoding.UTF8.GetBytes(message);
+                string msg = JsonUtility.ToJson(message);
+                byte[] data = Encoding.UTF8.GetBytes(msg);
                 tcpClient.GetStream().Write(data, 0, data.Length);
             }
         }

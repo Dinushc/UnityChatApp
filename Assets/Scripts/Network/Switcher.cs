@@ -1,5 +1,6 @@
 using System.Net;
 using System.Threading;
+using DefaultNamespace;
 using Network.Chat;
 using UnityEngine;
 
@@ -53,23 +54,23 @@ namespace Network
         void OnRoomCreationRequest(string roomId)
         {
             if(isMasterClient)
-                server.CreateRoom(roomId);
+                server.HandleRoomCommand(roomId, MessageEnum.CREATE_ROOM);
             else
-                client.CreateRoom(roomId);
+                client.HandleRoomCommand(roomId, MessageEnum.CREATE_ROOM);
         }
         void OnRoomRemove(string roomId)
         {
             if(isMasterClient)
-                server.RemoveRoom(roomId);
+                server.HandleRoomCommand(roomId, MessageEnum.DELETE_ROOM);
             else
-                client.DeleteRoom(roomId);
+                client.HandleRoomCommand(roomId, MessageEnum.DELETE_ROOM);
         }
         void OnJoinToRoom(string roomId)
         {
             if(isMasterClient)
-                server.JoinRoom(roomId);
+                server.HandleRoomCommand(roomId, MessageEnum.JOIN_ROOM);
             else
-                client.JoinRoom(roomId);
+                client.HandleRoomCommand(roomId, MessageEnum.JOIN_ROOM);
         }
 
         private void OnClientConnected(IPEndPoint clientEndPoint)
