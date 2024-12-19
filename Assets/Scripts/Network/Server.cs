@@ -184,6 +184,7 @@ namespace Network
 
                 case MessageEnum.DELETE_ROOM:
                     OnDeleteRoom?.Invoke(clientMessage.MessageData);
+                    //УВЕДОМИТЬ ВСЕХ
                     break;
                 
                 case MessageEnum.REMOVE_PARTICIPANT:
@@ -202,7 +203,7 @@ namespace Network
                 case MessageEnum.SEND_TO_ROOM:
                     if (!string.IsNullOrEmpty(clientMessage.RoomId) && !string.IsNullOrEmpty(clientMessage.MessageData))
                     {
-                        SendMessageToRoom(clientMessage.RoomId, clientMessage.MessageData);
+                        EventBus.instance.OnSendChatMessage?.Invoke(clientMessage.RoomId, clientMessage.Nickname, clientMessage.MessageData);
                     }
                     
                     if (!string.IsNullOrEmpty(clientMessage.RoomId) && 
@@ -229,7 +230,6 @@ namespace Network
         
         private void OnSendChatMessage(string roomName, string nickName, string message)
         {
-            Debug.Log("RoomName: " + roomName);
             var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, message, roomName, nickName);
 
             string jsonMessage = JsonUtility.ToJson(serverMessage);
@@ -264,12 +264,6 @@ namespace Network
             {
                 SendData(client, data);
             }
-        }
-        
-        public void SendMessageToClient(TcpClient client, string message)
-        {
-            byte[] data = Encoding.UTF8.GetBytes(message);
-            SendData(client, data);
         }
         
         public void HandleRoomCommand(string roomId, MessageEnum messageType)

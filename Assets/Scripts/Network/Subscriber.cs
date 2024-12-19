@@ -1,6 +1,5 @@
 using System;
 using Network.Chat;
-using UnityEngine;
 
 namespace Network
 {
@@ -21,14 +20,12 @@ namespace Network
             if (client != null)
             {
                 client.OnCreateRoom += OnCreateRoom;
-                client.OnJoinRoom += OnJoinRoom;
                 client.OnDeleteRoom += OnDeleteRoom;
             }
             
             if (server != null)
             {
                 server.OnCreateRoom += OnCreateRoom;
-                server.OnJoinRoom += OnJoinRoom;
                 server.OnDeleteRoom += OnDeleteRoom;
             }
         }
@@ -45,14 +42,12 @@ namespace Network
             if (client != null)
             {
                 client.OnCreateRoom -= OnCreateRoom;
-                client.OnJoinRoom -= OnJoinRoom;
                 client.OnDeleteRoom -= OnDeleteRoom;
             }
             
             if (server != null)
             {
                 server.OnCreateRoom -= OnCreateRoom;
-                server.OnJoinRoom -= OnJoinRoom;
                 server.OnDeleteRoom -= OnDeleteRoom;
             }
         }
@@ -62,14 +57,6 @@ namespace Network
             if (_roomCreationUI != null)
             {
                 _roomCreationUI.CreateRoomFromServer(roomId);   
-            }
-        }
-
-        void OnJoinRoom(string roomId)
-        {
-            if (_roomCreationUI != null)
-            {
-                _roomCreationUI.JoinToRoomFromServer(roomId);  
             }
         }
         

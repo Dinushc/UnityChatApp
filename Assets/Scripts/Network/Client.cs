@@ -65,6 +65,9 @@ namespace Network
             connector.OnConnected -= OnConnectedToServer;
             connector.OnMessageReceived -= HandleServerMessage;
             connector.OnDisconnected -= OnDisconnected;
+            
+            EventBus.instance.OnSendChatMessage -= OnSendChatMessage;
+            EventBus.instance.OnCloseChat -= OnLeftFromChat;
         }
 
         private async void HandleServerMessage(ServerMessage message)
@@ -95,8 +98,7 @@ namespace Network
                     break;
                 
                 case MessageEnum.REMOVE_PARTICIPANT:
-                    //OnLeftFromChat(message.RoomId, message.MessageData); //надо ли?
-                    //сделать удаление только по запросу сервера, ждем от сервера номер комнаты и номер клиента которого удалить
+                    //в данной реализации этот кейс не нужен
                     break;
 
                 case MessageEnum.CLIENT_LIST:
