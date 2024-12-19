@@ -67,6 +67,7 @@ namespace Network
                         if (part.TrimEnd().EndsWith("}"))
                         {
                             string completeMessage = messageBuffer.ToString();
+                            completeMessage = ExtractFirstJson(completeMessage);
                             int jsonStartIndex = completeMessage.IndexOf('{');
                 
                             if (jsonStartIndex != -1)
@@ -97,6 +98,32 @@ namespace Network
                 Debug.LogError($"Listening error: {ex.Message}");
                 OnDisconnected?.Invoke();
             }
+        }
+        
+        private string ExtractFirstJson(string input)
+        {
+            int bracketCount = 0;
+            int startIndex = -1;
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                if (input[i] == '{')
+                {
+                    if (startIndex == -1)
+                        startIndex = i;
+                    bracketCount++;
+                }
+                else if (input[i] == '}')
+                {
+                    bracketCount--;
+                    if (bracketCount == 0 && startIndex != -1)
+                    {
+                        return input.Substring(startIndex, i - startIndex + 1);
+                    }
+                }
+            }
+
+            return null;
         }
 
         public void SendMessage(ServerMessage message)

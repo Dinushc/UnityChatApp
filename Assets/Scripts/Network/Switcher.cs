@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Threading;
 using DefaultNamespace;
@@ -105,6 +106,11 @@ namespace Network
             server.OnClientDisconnected += OnClientDisconnected;
 
             await server.StartServer();
+        }
+
+        private void OnApplicationQuit()
+        {
+            OnDestroy();
         }
     }
 }
