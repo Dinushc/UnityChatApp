@@ -26,6 +26,8 @@ namespace Network.Chat.ChatRoomLogic
 
         private void CloseChat()
         {
+            EventBus.instance.OnCloseChat?.Invoke(currentRoomChat.RoomName);
+            currentRoomChat = null;
             chatUI.SetActive(false);
         }
 
@@ -38,6 +40,10 @@ namespace Network.Chat.ChatRoomLogic
 
         private void OnReceiveRoomMessage(string roomId, string nickname, string msg)
         {
+            if (currentRoomChat == null)
+            {
+                currentRoomChat = new RoomChatManager(roomId);
+            }
             if (currentRoomChat.RoomName.Equals(roomId))
             {
                 currentRoomChat.AddMessage(nickname, msg);

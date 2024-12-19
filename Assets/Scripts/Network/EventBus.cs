@@ -16,5 +16,6 @@ namespace Network
 
         public Action<string, string, string> OnSendChatMessage;
         public Action<string, string, string> OnReceiveRoomMessage;
+        public Action<string> OnCloseChat;
     }
 }

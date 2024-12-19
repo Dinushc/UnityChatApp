@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -45,11 +44,19 @@ namespace Network
             connector.OnDisconnected += OnDisconnected;
             
             EventBus.instance.OnSendChatMessage += OnSendChatMessage;
+            EventBus.instance.OnCloseChat += OnLeftFromChat;
         }
 
-        private void OnSendChatMessage(string roomName, string nickName, string message)
+        private void OnSendChatMessage(string roomId, string nickName, string message)
         {
-            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, message, roomName, nickName);
+            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, message, roomId, nickName);
+            connector.SendMessage(serverMessage);
+        }
+
+        private void OnLeftFromChat(string roomId)
+        {
+            Debug.Log("Отправил серверу инфу что я покинул комнату");
+            var serverMessage = new ServerMessage(MessageEnum.REMOVE_PARTICIPANT, messageData:string.Empty, roomId: roomId);
             connector.SendMessage(serverMessage);
         }
 
@@ -85,6 +92,11 @@ namespace Network
 
                 case MessageEnum.SERVER_SHUTDOWN:
                     await ChooseNewServer();
+                    break;
+                
+                case MessageEnum.REMOVE_PARTICIPANT:
+                    //OnLeftFromChat(message.RoomId, message.MessageData); //надо ли?
+                    //сделать удаление только по запросу сервера, ждем от сервера номер комнаты и номер клиента которого удалить
                     break;
 
                 case MessageEnum.CLIENT_LIST:
@@ -218,12 +230,6 @@ namespace Network
         public void HandleRoomCommand(string roomId, MessageEnum messageType)
         {
             var serverMessage = new ServerMessage(messageType, roomId);
-            connector.SendMessage(serverMessage);
-        }
-        
-        public void SendChatMessage(string roomId, string message)
-        {
-            var serverMessage = new ServerMessage(MessageEnum.SEND_TO_ROOM, roomId, message);
             connector.SendMessage(serverMessage);
         }
 

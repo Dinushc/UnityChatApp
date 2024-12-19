@@ -35,6 +35,7 @@ namespace Network
         {
             OnMessageReceived += ProcessClientMessage;
             EventBus.instance.OnSendChatMessage += OnSendChatMessage;
+            EventBus.instance.OnCloseChat += OnLeftFromChat;
         }
 
         public async UniTask StartServer()
@@ -184,11 +185,23 @@ namespace Network
                 case MessageEnum.DELETE_ROOM:
                     OnDeleteRoom?.Invoke(clientMessage.MessageData);
                     break;
+                
+                case MessageEnum.REMOVE_PARTICIPANT:
+                    var deletedClient = _connectedClients.FirstOrDefault(c => c.Client.RemoteEndPoint.Equals(clientEndPoint));
+                    if (deletedClient != null)
+                    {
+                        RemoveClientFromRoom(clientMessage.RoomId, deletedClient);
+                    }
+
+                    Debug.Log($"Принял инфу что клиент {deletedClient} покинул комнату {clientMessage.RoomId}");
+                    Debug.Log($"Буду передавать всем участникам комнаты что этот вышел");
+                    var chatServiceMessage = $"Participant with id {deletedClient.Client.RemoteEndPoint} is left";
+                    SendMessageToRoom(clientMessage.RoomId, chatServiceMessage);
+                    break;
 
                 case MessageEnum.SEND_TO_ROOM:
                     if (!string.IsNullOrEmpty(clientMessage.RoomId) && !string.IsNullOrEmpty(clientMessage.MessageData))
                     {
-                        Debug.Log("check blin: " + clientMessage.RoomId + " ||| " + clientMessage.MessageData);
                         SendMessageToRoom(clientMessage.RoomId, clientMessage.MessageData);
                     }
                     
@@ -231,6 +244,17 @@ namespace Network
             }
         }
         
+        private void OnLeftFromChat(string roomId)
+        {
+            var serverMessage = new ServerMessage(MessageEnum.REMOVE_PARTICIPANT, messageData:string.Empty, roomId: roomId);
+            string jsonMessage = JsonUtility.ToJson(serverMessage);
+            byte[] data = Encoding.UTF8.GetBytes(jsonMessage);
+            foreach (var client in _connectedClients)
+            {
+                SendData(client, data); //уведомляем что клиент с функцией сервера покинул комнату
+            }
+        }
+        
         public void SendMessageToAllClients(ServerMessage message)
         {
             string jsonMessage = JsonUtility.ToJson(message);
@@ -238,20 +262,14 @@ namespace Network
 
             foreach (var client in _connectedClients)
             {
-                if (client.Connected)
-                {
-                    client.GetStream().Write(data, 0, data.Length);
-                }
+                SendData(client, data);
             }
         }
         
         public void SendMessageToClient(TcpClient client, string message)
         {
-            if (client.Connected)
-            {
-                byte[] data = Encoding.UTF8.GetBytes(message);
-                client.GetStream().Write(data, 0, data.Length);
-            }
+            byte[] data = Encoding.UTF8.GetBytes(message);
+            SendData(client, data);
         }
         
         public void HandleRoomCommand(string roomId, MessageEnum messageType)
@@ -267,8 +285,30 @@ namespace Network
                 _roomParticipants[roomId] = new HashSet<TcpClient>();
             }
 
-            _roomParticipants[roomId].Add(client);
-            Debug.Log($"Client {client.Client.RemoteEndPoint} added to room {roomId}");
+            if (!_roomParticipants[roomId].Contains(client))
+            {
+                _roomParticipants[roomId].Add(client);
+                Debug.Log($"Client {client.Client.RemoteEndPoint} added to room {roomId}");   
+            }
+            else
+            {
+                Debug.Log($"Client {client.Client.RemoteEndPoint} already added to room {roomId}");
+            }
+        }
+        
+        public void RemoveClientFromRoom(string roomId, TcpClient client)
+        {
+            if (_roomParticipants.ContainsKey(roomId))
+            {
+                _roomParticipants[roomId].Remove(client);
+                Debug.Log($"Client {client.Client.RemoteEndPoint} removed from room {roomId}");
+
+                if (_roomParticipants[roomId].Count == 0)
+                {
+                    _roomParticipants.Remove(roomId);
+                    Debug.Log($"Room {roomId} is empty and removed");
+                }
+            }
         }
         
         public void SendMessageToRoom(string roomId, string message)
@@ -283,11 +323,7 @@ namespace Network
 
             foreach (var client in _roomParticipants[roomId])
             {
-                Debug.Log("check client");
-                if (client.Connected)
-                {
-                    client.GetStream().Write(data, 0, data.Length);
-                }
+                SendData(client, data);
             }
             Debug.Log($"Message sent to room {roomId}: {message}");
         }
@@ -309,6 +345,14 @@ namespace Network
         {
             var serverMessage = new ServerMessage(MessageEnum.SERVER_SHUTDOWN, string.Empty);
             SendMessageToAllClients(serverMessage);
+        }
+
+        void SendData(TcpClient client, byte[] data)
+        {
+            if (client.Connected)
+            {
+                client.GetStream().Write(data, 0, data.Length);
+            }
         }
         
         private void Unsubscribe()

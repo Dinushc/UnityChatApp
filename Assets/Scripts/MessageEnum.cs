@@ -8,6 +8,7 @@ namespace DefaultNamespace
         JOIN_ROOM,
         SEND_TO_ROOM,
         DELETE_ROOM,
-        CLIENT_LIST
+        CLIENT_LIST,
+        REMOVE_PARTICIPANT
     }
 }
