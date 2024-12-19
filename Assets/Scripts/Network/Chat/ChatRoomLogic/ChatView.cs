@@ -39,6 +39,10 @@ namespace Network.Chat.ChatRoomLogic
 
         private void OnReceiveRoomMessage(string roomId, string nickname, string msg)
         {
+            if (nickname.Equals(_nickName))
+            {
+                return;
+            }
             if (currentRoomChat == null)
             {
                 currentRoomChat = new RoomChatManager(roomId);
